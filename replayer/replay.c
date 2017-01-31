@@ -30,7 +30,7 @@ int respecttime = 1;
 int check_cache = 1;
 int block_size = 512; 
 int64_t DISK_SIZE_IN_SECTS = 0;
-
+pthread_t *tid; 
 // ANOTHER GLOBAL VARIABLES
 int fd;
 int totalio;
@@ -309,24 +309,34 @@ void *performIO(){
     
     atomicAdd(&latecount, mylatecount);
     atomicAdd(&slackcount, myslackcount);
-    
+    while (1) {
+        sleep(1);
+    }
     return NULL;
 }
 
 void *printProgress(){
     int readcnt, writecnt;
+    int finish = 0;
+    int x;
     while(jobtracker <= totalio){
         readcnt = atomicReadAndReset(&readcount);
         writecnt = atomicReadAndReset(&writecount);
-        printf("Progress: %.2f%%(%d/%d) (%d/%d)\r",(float)jobtracker / totalio * 100,
+        printf("Progress: %.2f%%(%d/%d) (%d/%d)            \r",(float)jobtracker / totalio * 100,
                 jobtracker, totalio, readcnt, writecnt);
         fflush(stdout);
         
         if(jobtracker == totalio){
-            break;
+            finish ++;
+            if (finish == 5) {
+                break;
+            }
         }
         
         sleep(1);
+    }
+    for (x = 0; x < numworkers; x++) {
+        pthread_cancel(tid[x]);
     }
     printf("\n");
     
@@ -340,7 +350,7 @@ void operateWorkers(){
     printf("Start doing requests...\n");
     
     // thread creation
-    pthread_t *tid = malloc(numworkers * sizeof(pthread_t));
+    tid = malloc(numworkers * sizeof(pthread_t));
     if(tid == NULL){
         fprintf(stderr,"Error malloc thread!\n");
         exit(1);
@@ -408,11 +418,11 @@ int main(int argc, char *argv[]) {
     arrangeIO(request);
 
     //check cache if needed
-    if(check_cache == 1){
+   /* if(check_cache == 1){
         checkCache(fd);
     }
     cleanCache();
-    printf("After cleancache\n");
+    printf("After cleancache\n");*/
     prepareMetrics();
     printf("After prepareMetrics\n");
     operateWorkers();

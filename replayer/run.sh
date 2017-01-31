@@ -3,8 +3,12 @@
 
 MYPATH=/home/huaicheng/bin
 #trace=traces/5min/MSNFS-10-15
-trace=traces/5min/TPCC-5min-modified.trace
+#trace=traces/5min/TPCC-5min-modified.trace
+#trace=traces/5min/TPCC-5min-modified.trace
+trace=TPCC-5min-resize-4-rerate-1
+#trace=DTRS-5min-resize-1-rerate-1
 #trace=traces/5min/DTRS-5min-0.5t.trace
+#trace=traces/5min/LMBE-5min
 #trace=traces/5min/DTRS-5min-2x.trace
 
 echo "===>Enter Replay Mode: (0: default, 5: gct, 4: ebusy)"
@@ -20,13 +24,13 @@ echo ""
 printf "===>You are in Mode: "
 dmesg | tail -n 1
 echo ""
-sleep 2
+sleep 1
 
 echo "===>Checking Raid Status.."
 cat /proc/mdstat
 echo ""
 echo ""
-sleep 2
+sleep 1
 
 echo "===>Making sure you're running $trace"
 read
