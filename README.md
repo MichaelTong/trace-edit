@@ -32,9 +32,9 @@ Type of traces:<br/>
 
 <p>
 2. Modify a trace (Precondition: The trace must has been preprocessed)<br />
-Resize all requests size by 2x and rerate all request arrival time by 0.5x : <br />
+Resize all read requests size by 2x and rerate all write request arrival time by 0.5x : <br />
 </p>
-<pre>python trace-editor.py -file &lt;tracename&gt; -resize 2 -rerate 0.5</pre>
+<pre>python trace-editor.py -file &lt;tracename&gt; -rresize 2 -wrerate 0.5</pre>
 <p>
 Insert a 4KB read (iotype == 1) for every 1000ms: <br />
 </p>
