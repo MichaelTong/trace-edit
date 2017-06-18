@@ -15,15 +15,16 @@ import math,numpy
 from collections import defaultdict
 
 def convertToByteStr(size_in_byte):
+    size_byte = int(float(size_in_byte))
     ret_str = ""
-    if int(size_in_byte) > (1024 ** 3):
-      ret_str += "%.2f" % (float(size_in_byte) / (1024 ** 3)) + " GB"
-    elif int(size_in_byte) > (1024 ** 2):
-      ret_str += "%.2f" % (float(size_in_byte) / (1024 ** 2)) + " MB"
-    elif int(size_in_byte) > 1024:
-      ret_str += "%.2f" % (float(size_in_byte) / 1024) + " KB"
+    if size_byte > (1024 ** 3):
+      ret_str += "%.2f" % (float(size_byte) / (1024 ** 3)) + " GB"
+    elif size_byte > (1024 ** 2):
+      ret_str += "%.2f" % (float(size_byte) / (1024 ** 2)) + " MB"
+    elif size_byte > 1024:
+      ret_str += "%.2f" % (float(size_byte) / 1024) + " KB"
     else:
-      ret_str += str(size_in_byte) + "B"
+      ret_str += str(size_byte) + "B"
     return ret_str
 
 def getTraceInfo(tracefile):
@@ -94,16 +95,16 @@ def getTraceInfo(tracefile):
         firstTime = float(words[0])
 
     if ioType == 0:
-      total_write_size += (int(words[3]) * 0.5)
+      total_write_size += (float(words[3]) * 0.5)
       writeCount+=1
-      writeSize.append(int(words[3])*512)
-      if write_max_size < 0 or write_max_size < int(words[3]):
-        write_max_size = int(words[3])
-      if write_min_size < 0 or write_min_size > int(words[3]):
-        write_min_size = int(words[3])
-      if write_max_offset < 0 or write_max_offset < int(words[2]):
+      writeSize.append(float(words[3])*512)
+      if write_max_size < 0 or write_max_size < float(words[3]):
+        write_max_size = float(words[3])
+      if write_min_size < 0 or write_min_size > float(words[3]):
+        write_min_size = float(words[3])
+      if write_max_offset < 0 or write_max_offset < float(words[2]):
         write_max_offset = int(words[2])
-      if write_min_offset < 0 or write_min_offset > int(words[2]):
+      if write_min_offset < 0 or write_min_offset > float(words[2]):
         write_min_offset = int(words[2])
       if lastBlockNo != -1:
         if (lastBlockNo + lastBlockCount) != int(words[2]):
@@ -111,16 +112,16 @@ def getTraceInfo(tracefile):
           if lastBlockCount * 0.5 <= 32: #KB
             small_random_writes += 1
       lastBlockNo = int(words[2])
-      lastBlockCount = int(words[3])
+      lastBlockCount = float(words[3])
     elif ioType == 1:
-      total_read_size += (int(words[3]) * 0.5)
+      total_read_size += (float(words[3]) * 0.5)
       readCount+=1
-      readSize.append(int(words[3])*512)
+      readSize.append(float(words[3])*512)
 
       if read_max_size < 0 or read_max_size < int(words[3]):
-        read_max_size = int(words[3])
+        read_max_size = float(words[3])
       if read_min_size < 0 or read_min_size > int(words[3]):
-        read_min_size = int(words[3])
+        read_min_size = float(words[3])
       if read_max_offset < 0 or read_max_offset < int(words[2]):
         read_max_offset = int(words[2])
       if read_min_offset < 0 or read_min_offset > int(words[2]):
@@ -139,20 +140,20 @@ def getTraceInfo(tracefile):
 
     #---start of countbucket part---
     #sizes in countbucket are in KB
-    bucket_slot = int(math.ceil(math.log(int(words[3]) * 0.5, 2))) - 5
+    bucket_slot = int(math.ceil(math.log(float(words[3]) * 0.5, 2))) - 5
     bucket_slot = max(0,bucket_slot) and min(6,bucket_slot)
 
     if ioType == 0:
       write_countbucket[bucket_slot] += 1
-      write_sizebucket[bucket_slot] += (int(words[3]) * 512)
+      write_sizebucket[bucket_slot] += (float(words[3]) * 512)
     else: #ioType == 1
       read_countbucket[bucket_slot] += 1
-      read_sizebucket[bucket_slot] += (int(words[3]) * 512)
+      read_sizebucket[bucket_slot] += (float(words[3]) * 512)
     #---end of countbucket part---
 
     #---start of written block part---
     if ioType == 0: #if write
-      for writtenblk in range(int(words[2]), int(words[2]) + int(words[3])):
+      for writtenblk in range(int(words[2]), int(int(words[2]) + float(words[3]))):
         written_block[writtenblk] += 1
     #---end of written block part---
     #Note start and end trace time
@@ -178,35 +179,35 @@ def getTraceInfo(tracefile):
 total time                  & {:.2f}             & max write                     & {}           \\\\ \\hline
 IO count                    & {}            	 & min write                     & {}           \\\\ \\hline
 IO/s                        & {:.2f}             & max read                      & {}           \\\\ \\hline
-\%read                      & {:.2f}             & min read                      & {}           \\\\ \\hline
-read(KB)/s                  & {:.2f}             & \multicolumn{{2}}{{c|}}{{\\textbf{{OFFSET}}}}           \\\\ \\hline
-read/s                      & {:.2f}             & max write                     & {}           \\\\ \\hline
-\%write                     & {:.2f}             & min write                     & {}           \\\\ \\hline
-write(KB)/s                 & {:.2f}             & span write                    & {}           \\\\ \\hline
-write/s                     & {:.2f}             & max read                      & {}           \\\\ \\hline
-\%random write              & {:.2f}             & min read                      & {}           \\\\ \\hline
-                            &            	     & span read                     & {}           \\\\ \\hline
+\%write                     & {:.2f}             & min read                      & {}           \\\\ \\hline
+write(KB)/s                 & {:.2f}             & \multicolumn{{2}}{{c|}}{{\\textbf{{OFFSET}}}}           \\\\ \\hline
+write/s                     & {:.2f}             & max write                     & {}           \\\\ \\hline
+avg write(KB)               & {:.2f}             & min write                     & {}           \\\\ \\hline
+\%read                      & {:.2f}             & span write                    & {}           \\\\ \\hline             
+read(KB)/s                  & {:.2f}             & max read                      & {}           \\\\ \\hline
+read/s                      & {:.2f}             & min read                      & {}           \\\\ \\hline
+avg read(KB)                & {:.2f}     	 & span read                     & {}           \\\\ \\hline
 """
 
   outstr += basic_size_offset.format(tracefile, tracefile, tracefile,
 		                     (lastTime - firstTime)/1000, convertToByteStr(write_max_size * 512),
 		                     ioCount, convertToByteStr(write_min_size * 512),
 		                     float(ioCount) / totalsec, convertToByteStr(read_max_size * 512),
-		                     float(readCount) / float(ioCount) * 100, convertToByteStr(read_min_size * 512),
-		                     float(total_read_size) / totalsec,
-		                     float(readCount) / totalsec, convertToByteStr(write_max_offset * 512),
-		                     float(writeCount) / float(ioCount) * 100, convertToByteStr(write_min_offset*512),
-		                     float(total_write_size) / totalsec, convertToByteStr((write_max_offset - write_min_offset)*512),
-		                     float(writeCount) / totalsec, convertToByteStr(read_max_offset * 512),
-		                     float(randomWriteCount) / float(writeCount) * 100, convertToByteStr(read_min_offset*512),
-				     convertToByteStr((read_max_offset - read_min_offset)*512))
+		                     float(writeCount) / float(ioCount) * 100, convertToByteStr(read_min_size * 512),
+		                     float(total_write_size) / totalsec,
+		                     float(writeCount) / totalsec, convertToByteStr(write_max_offset * 512),
+                                     float(total_write_size) / writeCount, convertToByteStr(write_min_offset*512),
+		                     float(readCount) / float(ioCount) * 100, convertToByteStr((write_max_offset - write_min_offset)*512),
+		                     float(total_read_size) / totalsec, convertToByteStr(read_max_offset * 512),
+		                     float(readCount) / totalsec, convertToByteStr(read_min_offset*512),
+		                     float(total_read_size) / readCount, convertToByteStr((read_max_offset - read_min_offset)*512))
 
   sizebucket = """
 \multicolumn{{4}}{{|c|}}{{\\textbf{{SIZE BUCKET(KB) {{[}}0-32,32-64,64-128,128-256,256-512,512-1024{{]}}}}}} \\\\ \\hline
-read count                  & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
-write count                 & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
-read size                   & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
-write size                  & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
+write count                  & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
+read count                 & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
+write size                   & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
+read size                  & \multicolumn{{2}}{{l|}}{{{}}}                      & {}                   \\\\ \\hline
 """
   str_read_sizebucket = "["
   for size in read_sizebucket:
@@ -219,10 +220,10 @@ write size                  & \multicolumn{{2}}{{l|}}{{{}}}                     
   str_write_sizebucket = str_write_sizebucket[:-2] + "]"
 
 
-  outstr += sizebucket.format(str(read_countbucket), sum(read_countbucket),
-			      str(write_countbucket), sum(write_countbucket),
-			      str_read_sizebucket, convertToByteStr(str(sum(read_sizebucket))),
-			      str_write_sizebucket,convertToByteStr(str(sum(write_sizebucket))))
+  outstr += sizebucket.format(str(write_countbucket), sum(write_countbucket),
+			      str(read_countbucket), sum(read_countbucket),
+			      str_write_sizebucket, convertToByteStr(str(sum(write_sizebucket))),
+			      str_read_sizebucket,convertToByteStr(str(sum(read_sizebucket))))
 
   small_big = """
 \multicolumn{{4}}{{|c|}}{{\\textbf{{Small IO (\\textless= 32KB) v.s. Big IO(\\textgreater32KB)}}}}         \\\\ \\hline
@@ -238,8 +239,8 @@ big writes                  & {}             & big writes/s                  & {
 
   plot = """
 \multicolumn{{4}}{{|c|}}{{\\textbf{{Whisker plot: min, 25\%, med, 75\%, max}}}}                          \\\\ \\hline
-read(B)                     & \multicolumn{{3}}{{l|}}{{{}}}                                         \\\\ \\hline
-write(B)                    & \multicolumn{{3}}{{l|}}{{{}}}                                         \\\\ \\hline
+write(B)                     & \multicolumn{{3}}{{l|}}{{{}}}                                         \\\\ \\hline
+read(B)                    & \multicolumn{{3}}{{l|}}{{{}}}                                         \\\\ \\hline
 interval(ms)                & \multicolumn{{3}}{{l|}}{{{}}}                                         \\\\ \\hline
 same write                  & \multicolumn{{3}}{{l|}}{{{}}}                                         \\\\  \\hline
 \end{{tabular}}%
@@ -252,8 +253,8 @@ same write                  & \multicolumn{{3}}{{l|}}{{{}}}                     
   timeInterval.sort()
   overwritten_blk_count = numpy.array(written_block.values())
   
-  outstr += plot.format(str(readSize[0]) + ", "+ str(readSize[(readCount-1)/4]) + ", " +str(readSize[(readCount-1)/2]) + ", "+str(readSize[3*(readCount-1)/4])+", "+str(readSize[readCount-1]),
-		        str(writeSize[0]) + ", "+ str(writeSize[(writeCount-1)/4]) + ", " +str(writeSize[(writeCount-1)/2]) + ", "+str(writeSize[3*(writeCount-1)/4])+", "+str(writeSize[writeCount-1]),
+  outstr += plot.format(str(writeSize[0]) + ", "+ str(writeSize[(writeCount-1)/4]) + ", " +str(writeSize[(writeCount-1)/2]) + ", "+str(writeSize[3*(writeCount-1)/4])+", "+str(writeSize[writeCount-1]),
+			str(readSize[0]) + ", "+ str(readSize[(readCount-1)/4]) + ", " +str(readSize[(readCount-1)/2]) + ", "+str(readSize[3*(readCount-1)/4])+", "+str(readSize[readCount-1]),		        
                         "{:.02f}".format(timeInterval[0]) + ", "+ "{0:.2f}".format(timeInterval[(len(timeInterval)-1)/4]) + ", " +"{0:.2f}".format(timeInterval[(len(timeInterval)-1)/2]) + ", "+"{0:.2f}".format(timeInterval[3*(len(timeInterval)-1)/4])+", "+"{0:.2f}".format(timeInterval[len(timeInterval)-1]),
 		        str(numpy.percentile(overwritten_blk_count,0)) + ", "
 		        + str(numpy.percentile(overwritten_blk_count,25)) + ", "

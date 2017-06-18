@@ -149,5 +149,5 @@ if __name__ == '__main__':
         requestlist = trace_modifier.modifywRate(requestlist,args.wrerate)
       if args.insert:
         requestlist = trace_modifier.insertIO(requestlist,args.size,args.interval,args.iotype)
-      trace_modifier.printRequestList(requestlist, args.file)
+    trace_modifier.printRequestList(requestlist, args.file)
 
