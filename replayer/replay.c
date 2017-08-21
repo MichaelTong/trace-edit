@@ -139,8 +139,10 @@ void arrangeIO(char **requestarray){
         io->offset = (int64_t)atoll(strtok(NULL," ")) * 512; 
         /*in case I/O size more than 4MB */
         io->offset %= (DISK_SIZE); 
-        /*request size in sectors */
-        io->buflen = atoi(strtok(NULL," ")) * 512; 
+        /*request size in sectors to bytes*/
+        io->buflen = atoi(strtok(NULL," "));
+        io->buflen = 1 + ((io->buflen - 1)/4);
+        io->buflen *= 4096;
         /*IO type, 1 for read and 0 for write */
         io->rw = atoi(strtok(NULL," ")); 
         if (io->offset + io->buflen >= DISK_SIZE) {
