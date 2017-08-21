@@ -15,23 +15,22 @@
 #include <sys/ioctl.h>
 
 // compile: gcc replay.c -pthread
-
-//Note: all sizes are in block (1 block = block_size bytes)
-
+//Note: all sizes are in bytes
 // CONFIGURATION PART
 
+#define MEM_ALIGN 4096
+#define LARGEST_REQUEST_SIZE (32 * 1024 * 1024)
 
-int LARGEST_REQUEST_SIZE = 65536; //blocks
-int MEM_ALIGN = 4096; //bytes
 int numworkers = 128; // =number of threads
 int printlatency = 1; //print every io latency
 int maxio = 4000000; //halt if number of IO > maxio, to prevent printing too many to metrics file
 int respecttime = 1;
-int check_cache = 1;
-int block_size = 512; 
-int64_t DISK_SIZE_IN_SECTS = 0;
+
+int64_t DISK_SIZE = 0;
 pthread_t *tid; 
-// ANOTHER GLOBAL VARIABLES
+
+
+//OTHER GLOBAL VARIABLES
 int fd;
 int totalio;
 int jobtracker = 0;
@@ -42,10 +41,14 @@ int writecount = 0;
 void *buff;
 uint64_t starttime;
 
-int64_t *blkno; //TODO: devise better way to save blkno,size,flag
-int *reqsize;
-int *reqflag;
-float *timestamp;
+struct io_u {
+    double timestamp;
+    int rw; //1 for read, 0 for write
+    int64_t offset;
+    int64_t buflen;
+};
+
+struct io_u *all_io_u;
 
 FILE *metrics; //current format: offset,size,type,latency(ms)
 
@@ -53,81 +56,12 @@ pthread_mutex_t lock;
 
 /*=============================================================*/
 
-/* Coperd: get disk size in sectors */
-int64_t get_disksz_in_sects(int devfd)
+/* get disk size in bytes */
+int64_t get_disksz_in_bytes(int devfd)
 {
     int64_t sz;
     ioctl(devfd, BLKGETSIZE64, &sz);
-    return sz/512;
-}
-
-//check if cache is disabled, the result should be around 5ms for read and write
-void checkCache(int devfd){ 
-    struct timeval t1,t2;
-    void *checkingbuff;
-    float iotime = 0;
-    int numiter = 100;
-    int CHECK_SIZE = 4096;
-    int BLOCK_RANGE = DISK_SIZE_IN_SECTS / CHECK_SIZE;
-
-    printf("Checking cache by doing reads...\n");
-    
-    if (posix_memalign(&checkingbuff,MEM_ALIGN,CHECK_SIZE)){
-        fprintf(stderr,"memory allocation for cache checking failed\n");
-        exit(1);
-    }
-    
-    int i;
-    
-    // check read first
-    for(i = 0; i < numiter; i++){
-        gettimeofday(&t1,NULL); //reset the start time to before start doing the job
-        if(pread(fd, checkingbuff, CHECK_SIZE, (off_t)(rand() % BLOCK_RANGE) * CHECK_SIZE) < 0){
-            fprintf(stderr,"Read checking failed!\n");
-            exit(1);
-        }
-        gettimeofday(&t2,NULL);
-        iotime += (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0;
-    }
-    printf("Average 4KB read time: %.3fms\n", iotime / numiter);
-    
-    //reset io time
-    iotime = 0.0;
-    
-    printf("Checking cache by doing writes...\n");
-    
-    // check write after that
-    for(i = 0; i < numiter; i++){
-        gettimeofday(&t1,NULL); //reset the start time to before start doing the job
-        if(pwrite(fd, checkingbuff, CHECK_SIZE, (off_t)(rand() % BLOCK_RANGE) * CHECK_SIZE) < 0){
-            fprintf(stderr,"Write checking failed!\n");
-            exit(1);
-        }
-        gettimeofday(&t2,NULL);
-        iotime += (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0;
-    }
-    printf("Average 4KB write time: %.3fms\n", iotime / numiter);
-    
-    
-    free(checkingbuff);
-    printf("==============================\n");
-}
-
-void cleanCache(){
-    printf("Flush the on-disk cache...\n");
-    void* cleanbuff;
-    if (posix_memalign(&cleanbuff,MEM_ALIGN,500 * 1024 * 1024)){
-        fprintf(stderr,"memory allocation for cleaning failed\n");
-        exit(1);
-    }
-    int i;
-    for(i = 0; i < 2; i++){
-        if(pread(fd, cleanbuff, 500 * 1024 * 1024, 966367641600) < 0){
-            fprintf(stderr,"Cannot read 500MB for trace cleaning!\n");
-            exit(1);
-        }
-    }
-    free(cleanbuff);
+    return sz;
 }
 
 void prepareMetrics(){
@@ -186,43 +120,32 @@ int readTrace(char ***req, char *tracefile){
 }
 
 void arrangeIO(char **requestarray){
-    blkno = malloc(totalio * sizeof(int64_t));
-    reqsize = malloc(totalio * sizeof(int));
-    reqflag = malloc(totalio * sizeof(int));
-    timestamp = malloc(totalio * sizeof(float));
+    all_io_u = malloc(totalio * sizeof(struct io_u));
     
-    if(blkno == NULL || reqsize == NULL || reqflag == NULL || timestamp == NULL){
+    if(all_io_u == NULL){
         fprintf(stderr,"Error malloc in arrangeIO!\n");
         exit(1);
     }
     
     int i = 0;
     for(i = 0; i < totalio; i++){
-        char *io = malloc((strlen(requestarray[i]) + 1) * sizeof(char));
-        if(io == NULL){
-            fprintf(stderr,"Error malloc io!\n");
-            exit(1);
-        }
-        strcpy(io,requestarray[i]);
-
-        /* Coperd: IO arrival time */ 
-        timestamp[i] = atof(strtok(io," ")); 
-        /* Coperd: ignore dev no */
+        char *trace_req = requestarray[i];
+        struct io_u *io = &all_io_u[i];
+        /*IO arrival time */ 
+        io->timestamp = atof(strtok(trace_req," ")); 
+        /*ignore dev no */
         strtok(NULL," ");  
-        /* Coperd: offset in sectors */
-        blkno[i] = (int64_t)atoll(strtok(NULL," ")); 
-        /* Coperd: in case I/O size more than 4MB */
-        blkno[i] %= (DISK_SIZE_IN_SECTS); 
-        /* Coperd: request size in sectors */
-        reqsize[i] = atoi(strtok(NULL," ")); 
-        /* Coperd: IO type, 1 for read and 0 for write */
-        reqflag[i] = atoi(strtok(NULL," ")); 
-        if (blkno[i] + reqsize[i] >= DISK_SIZE_IN_SECTS) {
-            blkno[i] = DISK_SIZE_IN_SECTS - reqsize[i];
+        /*offset in sectors to bytes*/
+        io->offset = (int64_t)atoll(strtok(NULL," ")) * 512; 
+        /*in case I/O size more than 4MB */
+        io->offset %= (DISK_SIZE); 
+        /*request size in sectors */
+        io->buflen = atoi(strtok(NULL," ")) * 512; 
+        /*IO type, 1 for read and 0 for write */
+        io->rw = atoi(strtok(NULL," ")); 
+        if (io->offset + io->buflen >= DISK_SIZE) {
+            io->offset = DISK_SIZE - io->buflen;
         }
-        free(io);
-
-        //printf("%.2f,%ld,%d,%d\n", timestamp[i], blkno[i], reqsize[i],reqflag[i]);
     }
 }
 
@@ -241,30 +164,34 @@ int atomicReadAndReset(int *val){
     return va;
 }
 
-
-void *performIO(){
-    //double sum = 0;
-    //int howmany = 0;
+void *performIO(){    
+    void *buff;
     int curtask;
     int mylatecount = 0;
     int myslackcount = 0;
-    struct timeval t1,t2;
+    struct timeval now,t1,t2;
+    struct io_u *io_task;
     
     useconds_t sleep_time;
 
+    if (posix_memalign(&buff, MEM_ALIGN, LARGEST_REQUEST_SIZE)){
+        fprintf(stderr,"memory allocation failed\n");
+        exit(1);
+    }
+    
     while(jobtracker < totalio){
         //firstly save the task to avoid any possible contention later
         assert(pthread_mutex_lock(&lock) == 0);
         curtask = jobtracker;
         jobtracker++;
         assert(pthread_mutex_unlock(&lock) == 0);
-        
+        io_task = &all_io_u[curtask];
         //respect time part
         if(respecttime == 1){
-            gettimeofday(&t1,NULL); //get current time
-            uint64_t elapsedtime = t1.tv_sec * 1000000 + t1.tv_usec - starttime;
-            if(elapsedtime <= timestamp[curtask] * 1000){
-                sleep_time = (useconds_t)(timestamp[curtask] * 1000) - elapsedtime;
+            gettimeofday(&now,NULL); //get current time
+            uint64_t elapsedtime = now.tv_sec * 1000000 + now.tv_usec - starttime;
+            if(elapsedtime <= io_task->timestamp * 1000){
+                sleep_time = (useconds_t)(io_task->timestamp * 1000) - elapsedtime;
                 if(sleep_time > 100000){
                     myslackcount++;
                 }    
@@ -276,20 +203,20 @@ void *performIO(){
           
         //do the job      
         gettimeofday(&t1,NULL); //reset the start time to before start doing the job
-        if(reqflag[curtask] == 0){
+        if(io_task->rw == 0){
             atomicAdd(&writecount, 1);
-            if(pwrite(fd, buff, reqsize[curtask]*512, blkno[curtask]*512) < 0){
-                fprintf(stderr,"Cannot write size %d to offset %lu!\n",(reqsize[curtask]), (blkno[curtask]));
+            if(pwrite(fd, buff, io_task->buflen, io_task->offset) < 0){
+                fprintf(stderr,"Cannot write size %ld to offset %ld!\n", io_task->buflen, io_task->offset);
                 exit(1);
             }
         }else{
             atomicAdd(&readcount, 1);
-            if(pread(fd, buff, reqsize[curtask]*512, blkno[curtask]*512) < 0){
-                fprintf(stderr,"Cannot read size %d to offset %lu!\n",(reqsize[curtask]), (blkno[curtask]));
+            if(pread(fd, buff, io_task->buflen, io_task->offset) < 0){
+                fprintf(stderr,"Cannot read size %ld to offset %ld!\n", io_task->buflen, io_task->offset);
                 exit(1);
             }
         }
-        gettimeofday(&t2,NULL);
+        gettimeofday(&t2, NULL);
         /* Coperd: I/O latency in us */
         int iotime = (t2.tv_sec - t1.tv_sec) * 1e6 + (t2.tv_usec - t1.tv_usec);
         if(printlatency == 1){
@@ -302,7 +229,7 @@ void *performIO(){
              * 4: I/O size in bytes
              * 5: offset in bytes
              */
-            fprintf(metrics,"%.3f,%d,%d,%d,%ld\n",timestamp[curtask], iotime, reqflag[curtask], reqsize[curtask], blkno[curtask]);
+            fprintf(metrics,"%.3f,%d,%d,%ld,%ld\n",io_task->timestamp, iotime, io_task->rw, io_task->buflen, io_task->offset);
             assert(pthread_mutex_unlock(&lock) == 0);
         }
     }
@@ -400,19 +327,14 @@ int main(int argc, char *argv[]) {
     }
 
     // start the disk part
-    fd = open(device, O_DIRECT | O_SYNC | O_RDWR);
+    fd = open(device, O_DIRECT | O_RDWR);
     if(fd < 0) {
         fprintf(stderr,"Cannot open %s\n", device);
         exit(1);
     }
 
-    DISK_SIZE_IN_SECTS = get_disksz_in_sects(fd);
+    DISK_SIZE = get_disksz_in_bytes(fd);
     
-    if (posix_memalign(&buff,MEM_ALIGN,LARGEST_REQUEST_SIZE * block_size)){
-        fprintf(stderr,"memory allocation failed\n");
-        exit(1);
-    }
-
     // read the trace before everything else
     totalio = readTrace(&request, argv[2]);
     arrangeIO(request);
