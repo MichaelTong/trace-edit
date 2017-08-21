@@ -182,6 +182,7 @@ void *performIO(){
     }
     
     while(jobtracker < totalio){
+        int ret;
         //firstly save the task to avoid any possible contention later
         assert(pthread_mutex_lock(&lock) == 0);
         curtask = jobtracker;
@@ -204,21 +205,21 @@ void *performIO(){
         }
           
         //do the job      
-        gettimeofday(&t1,NULL); //reset the start time to before start doing the job
         if(io_task->rw == 0){
             atomicAdd(&writecount, 1);
-            if(pwrite(fd, buff, io_task->buflen, io_task->offset) < 0){
-                fprintf(stderr,"Cannot write size %ld to offset %ld!\n", io_task->buflen, io_task->offset);
-                exit(1);
-            }
+            gettimeofday(&t1,NULL); //reset the start time to before start doing the job
+            ret = pwrite(fd, buff, io_task->buflen, io_task->offset);
+            gettimeofday(&t2, NULL);
         }else{
             atomicAdd(&readcount, 1);
-            if(pread(fd, buff, io_task->buflen, io_task->offset) < 0){
-                fprintf(stderr,"Cannot read size %ld to offset %ld!\n", io_task->buflen, io_task->offset);
-                exit(1);
-            }
+            gettimeofday(&t1,NULL); //reset the start time to before start doing the job
+            ret = pread(fd, buff, io_task->buflen, io_task->offset);
+            gettimeofday(&t2, NULL);
         }
-        gettimeofday(&t2, NULL);
+        if (ret < 0) {
+            fprintf(stderr,"Cannot %s size %ld to offset %ld!\n", io_task->rw?"read":"write", io_task->buflen, io_task->offset);
+            exit(1);
+        }
         /* Coperd: I/O latency in us */
         int iotime = (t2.tv_sec - t1.tv_sec) * 1e6 + (t2.tv_usec - t1.tv_usec);
         if(printlatency == 1){
