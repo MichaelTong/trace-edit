@@ -98,7 +98,7 @@ void set_8page_map(int64_t offset, int64_t len) {
     unsigned char *eight_page =  eightpagemap + page_offset/8;
     int eight_page_idx = page_offset % 8;
     for (int i = 0; i < page_len; i++) {
-        if (*eight_page & (1 << eight_page_idx)) {
+        if (!(*eight_page & (1 << eight_page_idx))) {
             dirty_pages ++;
         }
         *eight_page |= (1 << eight_page_idx);
@@ -147,15 +147,16 @@ void performIO(){
     int ret;
     int64_t page_count = DISK_SIZE/4096;
     int64_t written = 0;
+    int64_t i;
+    int j = 0;
 
     if (posix_memalign(&buff, MEM_ALIGN, LARGEST_REQUEST_SIZE)){
         perror("memory allocation failed");
         exit(-1);
     }
 
-    for(int64_t i = 0; i < page_count; i++) {
+    for(i = 0; i < page_count; i++) {
         printf("Touching Progress: %.2f%%, dirtying %ld/%ld       \r",(float)i / page_count * 100, written, dirty_pages);
-        int j = 0;
         if ((*map_8page) & (1 << j)) {
             written ++;
             ret = pwrite(fd, buff, 4096, i*4096);
