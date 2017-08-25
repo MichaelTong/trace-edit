@@ -13,6 +13,10 @@
 #include <inttypes.h>
 #include <linux/fs.h>
 #include <sys/ioctl.h>
+#include <linux/kernel.h>
+#include <sys/syscall.h>
+
+#define NR_START_STAMP 332
 
 // compile: gcc replay.c -pthread
 //Note: all sizes are in bytes
@@ -239,6 +243,7 @@ void *performIO(){
     
     atomicAdd(&latecount, mylatecount);
     atomicAdd(&slackcount, myslackcount);
+    free(buff);
     while (1) {
         sleep(1);
     }
@@ -290,6 +295,7 @@ void operateWorkers(){
     assert(pthread_mutex_init(&lock, NULL) == 0);
     
     int x;
+    syscall(NR_START_STAMP);
     gettimeofday(&t1,NULL);
     starttime = t1.tv_sec * 1000000 + t1.tv_usec;
     for(x = 0; x < numworkers; x++){
@@ -352,7 +358,6 @@ int main(int argc, char *argv[]) {
     printf("After prepareMetrics\n");
     operateWorkers();
 
-    free(buff);
     
     return 0;
 }
