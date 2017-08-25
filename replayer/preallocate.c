@@ -39,6 +39,7 @@ struct io_u {
 };
 
 unsigned char *eightpagemap; //8*4k map
+int64_t dirty_pages = 0;
 
 
 /*=============================================================*/
@@ -97,7 +98,10 @@ void set_8page_map(int64_t offset, int64_t len) {
     unsigned char *eight_page =  eightpagemap + page_offset/8;
     int eight_page_idx = page_offset % 8;
     for (int i = 0; i < page_len; i++) {
-        *eight_page |= 1 << eight_page_idx;
+        if (*eight_page & (1 << eight_page_idx)) {
+            dirty_pages ++;
+        }
+        *eight_page |= (1 << eight_page_idx);
         eight_page_idx ++;
         if (eight_page_idx == 8) {
             eight_page_idx = 0;
@@ -142,19 +146,21 @@ void performIO(){
     unsigned char *map_8page = eightpagemap;
     int ret;
     int64_t page_count = DISK_SIZE/4096;
+    int64_t written = 0;
 
     if (posix_memalign(&buff, MEM_ALIGN, LARGEST_REQUEST_SIZE)){
-        fprintf(stderr,"memory allocation failed\n");
-        exit(1);
+        perror("memory allocation failed");
+        exit(-1);
     }
 
     for(int64_t i = 0; i < page_count; i++) {
-        printf("Touching Progress: %.2f%%       \r",(float)i / page_count * 100);
+        printf("Touching Progress: %.2f%%, dirtying %ld/%ld       \r",(float)i / page_count * 100, written, dirty_pages);
         int j = 0;
         if ((*map_8page) & (1 << j)) {
+            written ++;
             ret = pwrite(fd, buff, 4096, i*4096);
             if (ret < 0) {
-                printf("Write error\n");
+                perror("Write error");
                 exit(-1);
             }
         }
@@ -184,8 +190,8 @@ int main(int argc, char *argv[]) {
     // start the disk part
     fd = open(device, O_DIRECT | O_RDWR);
     if(fd < 0) {
-        fprintf(stderr,"Cannot open %s\n", device);
-        exit(1);
+        perror("Cannot open");
+        exit(-1);
     }
 
     DISK_SIZE = get_disksz_in_bytes(fd);
