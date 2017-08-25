@@ -199,6 +199,7 @@ int main(int argc, char *argv[]) {
     eightpagemap = (unsigned char *)calloc(DISK_SIZE/4096/8, sizeof(unsigned char));
     // read the trace before everything else
     totalio = readTrace(&request, argv[2]);
+    arrangeIO(request);
     performIO();
 
     free(eightpagemap);
