@@ -148,9 +148,8 @@ void performIO(){
         exit(1);
     }
 
-    for(int64_t i = 0; i < DISK_SIZE; i++) {
-        printf("Touching Progress: %.2f%%       \r",(float)i / page_count * 100,
-                jobtracker, totalio, readcnt, writecnt);
+    for(int64_t i = 0; i < page_count; i++) {
+        printf("Touching Progress: %.2f%%       \r",(float)i / page_count * 100);
         int j = 0;
         if ((*map_8page) & (1 << j)) {
             ret = pwrite(fd, buff, 4096, i*4096);
@@ -171,6 +170,7 @@ void performIO(){
 
 int main(int argc, char *argv[]) {
     char device[64];
+    char **request;
     
     if (argc != 3){
         printf("Usage: ./replayer /dev/md0 tracefile\n");
