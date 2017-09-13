@@ -22,10 +22,10 @@
 //Note: all sizes are in bytes
 // CONFIGURATION PART
 
-#define MEM_ALIGN 4096
+#define MEM_ALIGN 16384
 #define LARGEST_REQUEST_SIZE (32 * 1024 * 1024)
 
-int numworkers = 128; // =number of threads
+int numworkers = 32; // =number of threads
 int printlatency = 1; //print every io latency
 int maxio = 4000000; //halt if number of IO > maxio, to prevent printing too many to metrics file
 int respecttime = 1;
@@ -124,6 +124,7 @@ int readTrace(char ***req, char *tracefile){
 }
 
 void arrangeIO(char **requestarray){
+    int reads = 0, writes = 0;
     all_io_u = malloc(totalio * sizeof(struct io_u));
     
     if(all_io_u == NULL){
@@ -149,10 +150,16 @@ void arrangeIO(char **requestarray){
         io->buflen *= 4096;
         /*IO type, 1 for read and 0 for write */
         io->rw = atoi(strtok(NULL," ")); 
+        if (io->rw == 0) {
+            writes ++;
+        } else {
+            reads ++;
+        }
         if (io->offset + io->buflen >= DISK_SIZE) {
             io->offset = DISK_SIZE - io->buflen;
         }
     }
+    printf("Read %d, Write %d, Total %d\n", reads, writes, reads+writes);
 }
 
 void atomicAdd(int *val, int add){
