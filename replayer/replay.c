@@ -254,6 +254,8 @@ void *printProgress(){
     int readcnt, writecnt;
     int finish = 0;
     int x;
+    int previous_tracker = -1;
+    int hang_timer = 0;
     while(jobtracker <= totalio){
         readcnt = atomicReadAndReset(&readcount);
         writecnt = atomicReadAndReset(&writecount);
@@ -267,8 +269,24 @@ void *printProgress(){
                 break;
             }
         }
+
+        if (previous_tracker == -1) {
+            previous_tracker = jobtracker;
+        }
         
+        if (previous_tracker == jobtracker) {
+            hang_timer++;
+        } else {
+            previous_tracker = jobtracker;
+            hang_timer = 0;
+        }
+        if (hang_timer == 10) 
+            break;
         sleep(1);
+    }
+    if (hang_timer == 10) {
+        printf("\nWARNING, job not finished, flush what we have\n");
+        fflush(metrics);
     }
     for (x = 0; x < numworkers; x++) {
         pthread_cancel(tid[x]);
